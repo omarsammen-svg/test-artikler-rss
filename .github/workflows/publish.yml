@@ -1,0 +1,65 @@
+name: Bygg og publiser RSS
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # hver 30. minutt
+  workflow_dispatch:          # kjør manuelt fra Actions
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Sjekk ut repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer avhengigheter
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generer RSS
+        env:
+          LIST_URL: https://sammen.no/no/artikkel
+          MAX_ITEMS: "10"
+          REFRESH_MINUTES: "30"
+          DEFAULT_IMAGE: ""   # sett full URL til fallback-bilde om ønskelig
+        run: |
+          mkdir -p public
+          python scripts/sammen_rss.py \
+            --list-url "${LIST_URL}" \
+            --max-items "${MAX_ITEMS}" \
+            --refresh-minutes "${REFRESH_MINUTES}" \
+            --default-image "${DEFAULT_IMAGE}" \
+            --out public/rss.xml
+          # enkel index-side (valgfritt)
+          echo '<!doctype html><meta charset="utf-8"><title>Sammen RSS</title>rss.xmlRSS-feed</a>' > public/index.html
+
+      - name: Last opp Pages-artifakt
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy til GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
