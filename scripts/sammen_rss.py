@@ -75,12 +75,16 @@ def truncate(txt, max_len=240):
 
 
 def parse_list(list_url, base, fetcher):
+    """
+    Prøver å hente artikkel-lenker fra landingssiden.
+    Fanger både relative og absolutte lenker som inneholder '/no/artikkel/'.
+    """
     html_doc = fetcher.get_text(list_url)
     soup = BeautifulSoup(html_doc, "html.parser")
     scope = soup.select_one("main") or soup
 
     hrefs = []
-    # Fang opp både relative og absolutte lenker til /no/artikkel/
+    # Fang opp både relative og absolutte lenker
     for a in scope.select('a[href*="/no/artikkel/"]'):
         href = a.get("href", "")
         u = to_abs(base, href)  # normaliser til absolutt
@@ -88,16 +92,50 @@ def parse_list(list_url, base, fetcher):
         if path and path.startswith("/no/artikkel/") and path.strip("/") != "no/artikkel":
             hrefs.append(u)
 
-    # Fjern duplikater, behold rekkefølge
-    seen = set()
-    unique = []
+    # Fjern duplikater, behold rekkefølgen
+    seen, unique = set(), []
     for u in hrefs:
         p = urlparse(u).path
         if p not in seen:
             seen.add(p)
             unique.append(u)
     return unique
+    return unique
 
+def parse_from_sitemap(base, fetcher, lang="no"):
+    """
+    Fallback når landingssiden ikke har lenker (JS/klientrendering).
+    Vi henter artikler fra sitemap.xml og filtrerer på '/no/artikkel/'.
+    Prøver flere vanlige sitemap-lokasjoner.
+    """
+    candidates = [
+        f"{base}/sitemap.xml",
+        f"{base}/no/sitemap.xml",
+        f"{base}/sitemap_index.xml",
+    ]
+    urls = []
+    for sm in candidates:
+        try:
+            xml = fetcher.get_text(sm)
+        except Exception:
+            continue
+        # Enkelt uttrekk av <loc>...</loc>
+        urls += re.findall(r"<loc>([^<]+)</loc>", xml, flags=re.I)
+
+    # Filtrer til artikler på norsk
+    filtered = []
+    seen = set()
+    for u in urls:
+        try:
+            u_abs = to_abs(base, u.strip())
+            path = urlparse(u_abs).path
+            if path.startswith("/no/artikkel/"):
+                if path not in seen:
+                    seen.add(path)
+                    filtered.append(u_abs)
+        except Exception:
+            continue
+    return filtered
 
 def parse_iso_date(s):
     if not s:
