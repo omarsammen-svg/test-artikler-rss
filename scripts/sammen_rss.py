@@ -80,12 +80,15 @@ def parse_list(list_url, base, fetcher):
     scope = soup.select_one("main") or soup
 
     hrefs = []
-    for a in scope.select('a[href^="/no/artikkel/"]'):
+    # Fang opp både relative og absolutte lenker til /no/artikkel/
+    for a in scope.select('a[href*="/no/artikkel/"]'):
         href = a.get("href", "")
-        path = urlparse(href).path
+        u = to_abs(base, href)  # normaliser til absolutt
+        path = urlparse(u).path
         if path and path.startswith("/no/artikkel/") and path.strip("/") != "no/artikkel":
-            hrefs.append(to_abs(base, href))
+            hrefs.append(u)
 
+    # Fjern duplikater, behold rekkefølge
     seen = set()
     unique = []
     for u in hrefs:
